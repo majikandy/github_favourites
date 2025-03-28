@@ -72,8 +72,21 @@ impl GitHubClient for RealGitHubClient {
             ));
         }
 
-        let repos: Vec<Repository> = response.json().await?;
-        Ok(repos)
+        let repos: Vec<serde_json::Value> = response.json().await?;
+
+        Ok(repos
+            .into_iter()
+            .map(|repo| Repository {
+                name: repo["name"].as_str().unwrap_or_default().to_string(),
+                url: repo["html_url"].as_str().unwrap_or_default().to_string(),
+                description: repo["description"]
+                    .as_str()
+                    .unwrap_or("No description")
+                    .to_string(),
+                stars: repo["stargazers_count"].as_u64().unwrap_or(0) as u32,
+                username: username.to_string(),
+            })
+            .collect())
     }
 }
 
