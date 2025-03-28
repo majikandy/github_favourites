@@ -1,6 +1,7 @@
 use clap::Parser;
 use github::FavouriteRepositories;
 mod github;
+use colored::Colorize;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -53,11 +54,12 @@ async fn main() {
                 Vec::new()
             });
         for repo in &repos {
-            println!("Repo Name: {}", repo.name);
-            println!("Repo URL: {}", repo.url);
-            println!("Repo Description: {}", repo.description);
-            println!("Stars: {}", repo.stars);
-            println!("Username: {}", repo.username);
+            println!("{}", "Repo Details:".bold().underline());
+            println!("{} {}", "Name:".cyan(), repo.name);
+            println!("{} {}", "URL:".cyan(), repo.url.blue().underline());
+            println!("{} {}", "Description:".cyan(), repo.description);
+            println!("{} {}", "Stars:".cyan(), repo.stars.to_string().yellow());
+            println!("{} {}", "Username:".cyan(), repo.username.green());
             println!();
         }
     }
@@ -67,6 +69,7 @@ async fn main() {
 mod tests {
     use super::*;
     use async_trait::async_trait;
+
     use github::GitHubClient;
     use github::Repository;
 
