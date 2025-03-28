@@ -1,18 +1,13 @@
 use github::FavouriteRepositories;
-use github::GitHubClient;
-
 mod github;
 
-use github::Repository;
-
 fn main() {
-    let favourite_repos = FavouriteRepositories::new(
-        "getcarv",
-        github::CachedGitHubClient::new(github::RealGitHubClient),
-    );
+    let favourite_repos =
+        FavouriteRepositories::new(github::CachedGitHubClient::new(github::RealGitHubClient));
+
     let top_repos = tokio::runtime::Runtime::new()
         .unwrap()
-        .block_on(favourite_repos.get_top_repos());
+        .block_on(favourite_repos.get_top_repos("getcarv", 10));
     for repo in top_repos {
         println!("Repo Name: {}", repo.name);
         println!("Repo URL: {}", repo.url);
@@ -23,32 +18,12 @@ fn main() {
     }
 }
 
-impl<T: GitHubClient + Sync> FavouriteRepositories<T> {
-    fn new(username: &str, client: T) -> Self {
-        Self {
-            username: username.to_string(),
-            repos: vec![],
-            client,
-        }
-    }
-
-    async fn get_top_repos(&self) -> Vec<Repository> {
-        let mut repos = self.client.fetch_repos(&self.username).await;
-
-        repos.sort_by(|a, b| b.stars.cmp(&a.stars));
-        repos.into_iter().take(10).collect()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use async_trait::async_trait;
     use github::GitHubClient;
     use github::Repository;
-    use serde::{Deserialize, Serialize};
-    use serde_json::Value;
-    use serde_json::json;
 
     struct MockGitHubClient;
 
@@ -84,9 +59,9 @@ mod tests {
     #[tokio::test]
     async fn test_repo_processing() {
         let client = MockGitHubClient;
-        let favourite_repositories = FavouriteRepositories::new("test_user", client);
+        let favourite_repositories = FavouriteRepositories::new(client);
 
-        let top_repos = favourite_repositories.get_top_repos().await;
+        let top_repos = favourite_repositories.get_top_repos("test_user", 3).await;
 
         assert_eq!(top_repos.len(), 3, "Should return exactly 3 repositories");
 

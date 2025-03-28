@@ -4,9 +4,23 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 pub struct FavouriteRepositories<T: GitHubClient + Sync> {
-    pub username: String,
     pub repos: Vec<Repository>,
     pub client: T,
+}
+
+impl<T: GitHubClient + Sync> FavouriteRepositories<T> {
+    pub fn new(client: T) -> Self {
+        Self {
+            repos: vec![],
+            client,
+        }
+    }
+
+    pub async fn get_top_repos(&self, username: &str, top_n: usize) -> Vec<Repository> {
+        let mut repos = self.client.fetch_repos(username).await;
+        repos.sort_by(|a, b| b.stars.cmp(&a.stars));
+        repos.into_iter().take(top_n).collect()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
