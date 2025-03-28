@@ -16,10 +16,14 @@ impl<T: GitHubClient + Sync> FavouriteRepositories<T> {
         }
     }
 
-    pub async fn get_top_repos(&self, username: &str, top_n: usize) -> Vec<Repository> {
-        let mut repos = self.client.fetch_repos(username).await;
+    pub async fn get_top_repos(
+        &self,
+        username: &str,
+        top_n: usize,
+    ) -> Result<Vec<Repository>, anyhow::Error> {
+        let mut repos = self.client.fetch_repos(username).await?;
         repos.sort_by(|a, b| b.stars.cmp(&a.stars));
-        repos.into_iter().take(top_n).collect()
+        Ok(repos.into_iter().take(top_n).collect())
     }
 }
 
@@ -34,30 +38,42 @@ pub struct Repository {
 
 #[async_trait]
 pub trait GitHubClient {
-    async fn fetch_repos(&self, username: &str) -> Vec<Repository>;
+    async fn fetch_repos(&self, username: &str) -> Result<Vec<Repository>, anyhow::Error>;
 }
 
-pub struct RealGitHubClient;
+pub struct RealGitHubClient {
+    client: reqwest::Client,
+}
 
+impl RealGitHubClient {
+    pub fn new() -> Self {
+        Self {
+            client: reqwest::Client::builder()
+                .user_agent("GitHub Client")
+                .build()
+                .unwrap(),
+        }
+    }
+}
 #[async_trait]
 impl GitHubClient for RealGitHubClient {
-    async fn fetch_repos(&self, _username: &str) -> Vec<Repository> {
-        vec![
-            Repository {
-                name: "repo1".to_string(),
-                url: "https://github.com/user/repo1".to_string(),
-                description: "A sample repository".to_string(),
-                stars: 42,
-                username: _username.to_string(),
-            },
-            Repository {
-                name: "repo2".to_string(),
-                url: "https://github.com/user/repo2".to_string(),
-                description: "Another sample repository".to_string(),
-                stars: 100,
-                username: _username.to_string(),
-            },
-        ]
+    async fn fetch_repos(&self, username: &str) -> Result<Vec<Repository>, anyhow::Error> {
+        let url = format!("https://api.github.com/users/{}/repos", username);
+
+        let response = self.client.get(&url).send().await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().await?;
+            return Err(anyhow::anyhow!(
+                "GitHub API error: {} - {}",
+                status,
+                error_text
+            ));
+        }
+
+        let repos: Vec<Repository> = response.json().await?;
+        Ok(repos)
     }
 }
 
@@ -78,22 +94,24 @@ impl<T: GitHubClient + Sync + Send> CachedGitHubClient<T> {
         &self,
         username: &str,
         bypass_cache: bool,
-    ) -> Vec<Repository> {
+    ) -> Result<Vec<Repository>, anyhow::Error> {
         if !bypass_cache {
             if let Some(cached_repos) = self.cache.get(username) {
-                return cached_repos.clone();
+                return Ok(cached_repos.clone());
             }
         }
 
         let repos = self.client.fetch_repos(username).await;
-        self.cache.insert(username.to_string(), repos.clone());
+        if let Ok(ref repos_data) = repos {
+            self.cache.insert(username.to_string(), repos_data.clone());
+        }
         repos
     }
 }
 
 #[async_trait]
 impl<T: GitHubClient + Sync + Send> GitHubClient for CachedGitHubClient<T> {
-    async fn fetch_repos(&self, username: &str) -> Vec<Repository> {
-        self.fetch_repos_with_cache(username, false).await
+    async fn fetch_repos(&self, username: &str) -> Result<Vec<Repository>, anyhow::Error> {
+        Ok(self.fetch_repos_with_cache(username, false).await?)
     }
 }

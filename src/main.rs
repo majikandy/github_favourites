@@ -1,20 +1,65 @@
+use clap::Parser;
 use github::FavouriteRepositories;
 mod github;
 
-fn main() {
-    let favourite_repos =
-        FavouriteRepositories::new(github::CachedGitHubClient::new(github::RealGitHubClient));
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// GitHub usernames to fetch repositories for
+    #[arg(required_unless_present = "file")]
+    usernames: Vec<String>,
 
-    let top_repos = tokio::runtime::Runtime::new()
-        .unwrap()
-        .block_on(favourite_repos.get_top_repos("getcarv", 10));
-    for repo in top_repos {
-        println!("Repo Name: {}", repo.name);
-        println!("Repo URL: {}", repo.url);
-        println!("Repo Description: {}", repo.description);
-        println!("Stars: {}", repo.stars);
-        println!("Username: {}", repo.username);
-        println!();
+    /// File containing GitHub usernames (one per line)
+    #[arg(long)]
+    file: Option<String>,
+
+    /// Clear the cache before fetching
+    #[arg(short, long)]
+    clear_cache: bool,
+
+    /// Output format (json or toml)
+    #[arg(short, long, value_enum)]
+    format: Option<OutputFormat>,
+
+    /// Output file path
+    #[arg(short, long)]
+    output: Option<String>,
+
+    /// GitHub access token for increased rate limits
+    #[arg(short, long)]
+    token: Option<String>,
+}
+
+#[derive(clap::ValueEnum, Clone, Debug)]
+enum OutputFormat {
+    Json,
+    Toml,
+}
+
+#[tokio::main]
+async fn main() {
+    let args = Args::parse();
+
+    let favourite_repos = FavouriteRepositories::new(github::CachedGitHubClient::new(
+        github::RealGitHubClient::new(),
+    ));
+    for username in &args.usernames {
+        println!("Fetching repositories for user: {}", username);
+        let repos = favourite_repos
+            .get_top_repos(username, 10)
+            .await
+            .unwrap_or_else(|err| {
+                eprintln!("Error fetching repositories: {}", err);
+                Vec::new()
+            });
+        for repo in &repos {
+            println!("Repo Name: {}", repo.name);
+            println!("Repo URL: {}", repo.url);
+            println!("Repo Description: {}", repo.description);
+            println!("Stars: {}", repo.stars);
+            println!("Username: {}", repo.username);
+            println!();
+        }
     }
 }
 
@@ -29,8 +74,8 @@ mod tests {
 
     #[async_trait]
     impl GitHubClient for MockGitHubClient {
-        async fn fetch_repos(&self, _username: &str) -> Vec<Repository> {
-            vec![
+        async fn fetch_repos(&self, _username: &str) -> Result<Vec<Repository>, anyhow::Error> {
+            Ok(vec![
                 Repository {
                     name: "medium-star-repo".to_string(),
                     url: "https://github.com/test/medium-star-repo".to_string(),
@@ -52,7 +97,7 @@ mod tests {
                     stars: 1,
                     username: "test".to_string(),
                 },
-            ]
+            ])
         }
     }
 
@@ -61,7 +106,10 @@ mod tests {
         let client = MockGitHubClient;
         let favourite_repositories = FavouriteRepositories::new(client);
 
-        let top_repos = favourite_repositories.get_top_repos("test_user", 3).await;
+        let top_repos = favourite_repositories
+            .get_top_repos("test_user", 3)
+            .await
+            .expect("Failed to fetch repos");
 
         assert_eq!(top_repos.len(), 3, "Should return exactly 3 repositories");
 
