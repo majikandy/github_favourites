@@ -6,7 +6,10 @@ mod github;
 use github::Repository;
 
 fn main() {
-    let favourite_repos = FavouriteRepositories::new("getcarv", github::RealGitHubClient);
+    let favourite_repos = FavouriteRepositories::new(
+        "getcarv",
+        github::CachedGitHubClient::new(github::RealGitHubClient),
+    );
     let top_repos = tokio::runtime::Runtime::new()
         .unwrap()
         .block_on(favourite_repos.get_top_repos());
